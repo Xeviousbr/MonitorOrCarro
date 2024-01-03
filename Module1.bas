@@ -63,11 +63,8 @@ Private Type DOCINFO
 End Type
 
 Private trayIcon As NOTIFYICONDATA
-
 Private TimerID As Long
 Private isProcessing As Boolean
-
-
 
 Private Sub TrayIconCallback(ByVal hWnd As Long, ByVal Msg As Long, ByVal wParam As Long, ByVal lParam As Long)
     If Msg = WM_TRAYMESSAGE Then
@@ -80,13 +77,16 @@ Private Sub TrayIconCallback(ByVal hWnd As Long, ByVal Msg As Long, ByVal wParam
 End Sub
 
 Public Sub StartTimer(ByVal interval As Long)
+    WriteToLog "StartTimer", 1
     TimerID = SetTimer(0&, 0&, interval, AddressOf TimerProc)
     If TimerID = 0 Then
+        WriteToLog "Não foi possível criar o timer! TimerID = 0", 1
         MsgBox "Não foi possível criar o timer!", vbCritical
     End If
 End Sub
 
 Public Sub StopTimer()
+    WriteToLog "StopTimer", 2
     KillTimer 0&, TimerID
 End Sub
 
@@ -96,38 +96,47 @@ Private Sub TimerProc(ByVal hWnd As Long, ByVal uMsg As Long, ByVal nIDEvent As 
     Dim mostRecentFile As String
     Dim mostRecentDate As Date
     Dim currentFileDate As Date
+
     
     If isProcessing Then
+        WriteToLog "Saiu de TimerProc porque isProcessing = true", 2
         Exit Sub
     End If
     isProcessing = True
+    WriteToLog "TimerProc Tipo = " & Tipo, 2
+    
+    If Tipo = "" Then
+        Tipo = "0"
+        WriteToLog "Variavel Tipo esta vazia", 2
+        Ver = "C:\OrCarro"
+        WriteToLog "Variavel Tipo ajustada para " & Tipo, 2
+    End If
 
     If Tipo = "0" Then
         'COPIA PARA A REDE
         sourceFile = Ver & "\Impres.prn"
+        WriteToLog "Procura por " & sourceFile, 2
         If Dir(sourceFile) <> "" Then
-            If NivelLog = 1 Then
-                WriteToLog "Procurou por " & sourceFile & " e ACHOU"
-            End If
+            WriteToLog "Procurou por " & sourceFile & " e ACHOU", 1
             MoveECopia sourceFile
         Else
-            If NivelLog = 1 Then
-                WriteToLog "Procurou por " & sourceFile & " e NÃO ACHOU"
-            End If
+            WriteToLog "Procurou por " & sourceFile & " e NÃO ACHOU", 1
         End If
     Else
         'IMPRIME
+        If Ver = "" Then
+            WriteToLog "Variavel Ver esta vazia", 2
+            Ver = "C:\OrCarro"
+            WriteToLog "Variavel Ver ajustada para " & Ver, 2
+        End If
+        WriteToLog "Procura por tudo que estiver em " & Ver, 2
         fileFound = Dir(Ver & "\*.*")
         If fileFound > "" Then
             sourceFile = Ver & "\" & fileFound
-            If NivelLog = 1 Then
-                WriteToLog "Procurou em " & Ver & " e ACHOU"
-            End If
+            WriteToLog "Procurou em " & Ver & " e ACHOU", 1
             Imprime sourceFile
         Else
-            If NivelLog = 1 Then
-                WriteToLog "Procurou em " & Ver & " e NÃO ACHOU"
-            End If
+            WriteToLog "Procurou em " & Ver & " e NÃO ACHOU", 1
         End If
     End If
     isProcessing = False
@@ -145,7 +154,7 @@ Private Sub Imprime(sourceFile As String)
     printerName = GetPrinterName()
     PrintFile printerName, destinationFile
     DelayedKill sourceFile
-    WriteToLog "Arquivo enviado para impressão: " & sourceFile
+    WriteToLog "Arquivo enviado para impressão: " & sourceFile, 1
 End Sub
 
 Function ReadIniValue(section As String, key As String, iniFileName As String) As String
@@ -169,7 +178,7 @@ Private Sub MoveECopia(sourceFile As String)
     FileCopy sourceFile, destinationFile
     FileCopy sourceFile, networkPath & "\" & NmArquivo
     DelayedKill sourceFile
-    WriteToLog "Arquivo copiado: " & sourceFile
+    WriteToLog "Arquivo copiado: " & sourceFile, 1
 End Sub
 
 Sub PrintFile(ByVal printerName As String, ByVal fileName As String)
@@ -227,13 +236,14 @@ Public Sub Main()
     Dim iniFileName As String
     Dim lastRunDate As String
     Dim currentDate As String
+    Dim AusTimer As String
 
     Load Form1
     Form1.Visible = False
     SetupTrayIcon
     iniFileName = App.Path & "\monitor.ini"
 
-    iniFileName = App.Path & "\config.ini"
+    iniFileName = App.Path & "\monitor.ini"
     lastRunDate = ReadIniValue("Config", "LastRunDate", iniFileName)
     currentDate = Format(Date, "yyyymmdd")
     If lastRunDate <> currentDate Then
@@ -243,29 +253,81 @@ Public Sub Main()
     NivelLog = Val(ReadIniValue("Config", "NivelLog", iniFileName))
     networkPath = ReadIniValue("Config", "NetworkPath", iniFileName)
     Tipo = ReadIniValue("Config", "Tipo", iniFileName)
-    intervaloTimer = CLng(ReadIniValue("Config", "TimerInterval", iniFileName))
+    
+    AusTimer = ReadIniValue("Config", "TimerInterval", iniFileName)
+    If AusTimer = "" Then AusTimer = "1000"
+    intervaloTimer = CLng(AusTimer)
     Ver = ReadIniValue("Config", "Ver", iniFileName)
+    
     StartTimer intervaloTimer
     AddTrayIcon
 End Sub
 
 Private Sub PerformMaintenance()
+    ' Verificar e criar a pasta Log se não existir
+    Dim logFolderPath As String
+    logFolderPath = App.Path & "\Log"
+    If Dir(logFolderPath, vbDirectory) = "" Then
+        MkDir logFolderPath
+    End If
+
+    ' Mover o log
     Dim logFileName As String
     Dim newLogFileName As String
-    Dim fileName As String
-    
-    logFileName = App.Path & "\monitor.txt"
-    newLogFileName = App.Path & "\Log\monitor_" & Format(Date, "yyyymmdd") & ".txt"
+    logFileName = App.Path & "\monitor.log"
+    newLogFileName = logFolderPath & "\monitor_" & Format(Date, "yyyymmdd") & ".log"
     If Dir(logFileName) <> "" Then
         FileCopy logFileName, newLogFileName
         Kill logFileName
     End If
+
+    ' Apagar arquivos em Bak que têm mais de 48 horas
+    Dim fileName As String
+    Dim filePath As String
+    Dim fileCreationDate As Date
+
     fileName = Dir(App.Path & "\Bak\*.*")
     Do While fileName <> ""
-        Kill App.Path & "\Bak\" & fileName
-        fileName = Dir()
+        filePath = App.Path & "\Bak\" & fileName
+        fileCreationDate = FileDateTime(filePath)
+
+        ' Verifica se a diferença de tempo é maior que 48 horas
+        If DateDiff("h", fileCreationDate, Now) > 48 Then
+            Kill filePath
+        End If
+
+        fileName = Dir() ' Próximo arquivo
     Loop
 End Sub
+
+
+'Private Sub PerformMaintenance()
+'    ' Verificar e criar a pasta Log se não existir
+'    Dim logFolderPath As String
+'    logFolderPath = App.Path & "\Log"
+'    If Dir(logFolderPath, vbDirectory) = "" Then
+'        MkDir logFolderPath
+'    End If
+'
+'    ' Mover o log
+'    Dim logFileName As String
+'    Dim newLogFileName As String
+'    logFileName = App.Path & "\monitor.log"
+'    newLogFileName = logFolderPath & "\monitor_" & Format(Date, "yyyymmdd") & ".log"
+'    If Dir(logFileName) <> "" Then
+'        FileCopy logFileName, newLogFileName
+'        Kill logFileName
+'    End If
+'
+'    ' Apagar arquivos em Bak
+'    Dim fileName As String
+'    fileName = Dir(App.Path & "\Bak\*.*")
+'    Do While fileName <> ""
+'        Kill App.Path & "\Bak\" & fileName
+'        fileName = Dir() ' Próximo arquivo
+'    Loop
+'End Sub
+
 
 Function GetPrinterName() As String
     Dim printerName As String
@@ -277,16 +339,20 @@ Function GetPrinterName() As String
     GetPrinterName = Left$(printerName, InStr(printerName, Chr$(0)) - 1)
 End Function
 
-Public Sub WriteToLog(message As String)
+
+
+Public Sub WriteToLog(message As String, Nivel As Integer)
     Dim logFilePath As String
     Dim fileNumber As Integer
     
-    logFilePath = App.Path & "\monitor.txt"
-    fileNumber = FreeFile ' Obter um número de arquivo livre
-
-    Open logFilePath For Append As #fileNumber ' Abre o arquivo para adição de conteúdo
-    Print #fileNumber, Format(Now, "yyyy-mm-dd HH:MM:SS") & " - " & message ' Escreve data/hora e mensagem
-    Close #fileNumber ' Fecha o arquivo
+    If Nivel <= NivelLog Then
+        logFilePath = App.Path & "\monitor.txt"
+        fileNumber = FreeFile ' Obter um número de arquivo livre
+    
+        Open logFilePath For Append As #fileNumber ' Abre o arquivo para adição de conteúdo
+        Print #fileNumber, Format(Now, "yyyy-mm-dd HH:MM:SS") & " - " & message ' Escreve data/hora e mensagem
+        Close #fileNumber ' Fecha o arquivo
+    End If
 End Sub
 
 Public Sub DelayedKill(filePath As String)
