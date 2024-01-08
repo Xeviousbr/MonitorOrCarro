@@ -96,13 +96,26 @@ Private Sub TimerProc(ByVal hWnd As Long, ByVal uMsg As Long, ByVal nIDEvent As 
     Dim mostRecentFile As String
     Dim mostRecentDate As Date
     Dim currentFileDate As Date
+    Static lastProcessingTime As Double
 
-    
     If isProcessing Then
-        WriteToLog "Saiu de TimerProc porque isProcessing = true", 2
-        Exit Sub
+        If Timer - lastProcessingTime > 60 Then ' 60 segundos = 1 minuto
+            WriteToLog "isProcessing passado para TRUE", 1
+            isProcessing = False
+        Else
+            WriteToLog "Saiu de TimerProc porque isProcessing = true", 2
+            Exit Sub
+        End If
+    Else
+        lastProcessingTime = Timer ' Atualiza apenas quando isProcessing passa de True para False
     End If
     isProcessing = True
+'    If isProcessing Then
+'        WriteToLog "Saiu de TimerProc porque isProcessing = true", 2
+'        Exit Sub
+'    End If
+'    isProcessing = True
+
     WriteToLog "TimerProc Tipo = " & Tipo, 2
     
     If Tipo = "" Then
@@ -231,7 +244,6 @@ Sub RestoreWindowProc()
     Call SetWindowLong(Form1.hWnd, GWL_WNDPROC, lpPrevWndProc)
 End Sub
 
-
 Public Sub Main()
     Dim iniFileName As String
     Dim lastRunDate As String
@@ -300,35 +312,6 @@ Private Sub PerformMaintenance()
     Loop
 End Sub
 
-
-'Private Sub PerformMaintenance()
-'    ' Verificar e criar a pasta Log se não existir
-'    Dim logFolderPath As String
-'    logFolderPath = App.Path & "\Log"
-'    If Dir(logFolderPath, vbDirectory) = "" Then
-'        MkDir logFolderPath
-'    End If
-'
-'    ' Mover o log
-'    Dim logFileName As String
-'    Dim newLogFileName As String
-'    logFileName = App.Path & "\monitor.log"
-'    newLogFileName = logFolderPath & "\monitor_" & Format(Date, "yyyymmdd") & ".log"
-'    If Dir(logFileName) <> "" Then
-'        FileCopy logFileName, newLogFileName
-'        Kill logFileName
-'    End If
-'
-'    ' Apagar arquivos em Bak
-'    Dim fileName As String
-'    fileName = Dir(App.Path & "\Bak\*.*")
-'    Do While fileName <> ""
-'        Kill App.Path & "\Bak\" & fileName
-'        fileName = Dir() ' Próximo arquivo
-'    Loop
-'End Sub
-
-
 Function GetPrinterName() As String
     Dim printerName As String
     Dim bufferSize As Long
@@ -338,8 +321,6 @@ Function GetPrinterName() As String
     GetDefaultPrinter printerName, bufferSize
     GetPrinterName = Left$(printerName, InStr(printerName, Chr$(0)) - 1)
 End Function
-
-
 
 Public Sub WriteToLog(message As String, Nivel As Integer)
     Dim logFilePath As String
